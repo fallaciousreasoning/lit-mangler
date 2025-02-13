@@ -2,7 +2,7 @@ import { TemplateResult } from "lit-html";
 import { JSDOM } from 'jsdom'
 import { parseTemplate, templateTag } from "./mangleTag";
 
-export function mangle(getHtml: () => TemplateResult, instance: any, mangler: (root: FakeElement) => void) {
+export function mangle(getHtml: () => TemplateResult, instance: any, mangler: (root: ManglerElement) => void) {
     const templated = getHtml.call(instance)
     const domish = new DOMIsh(templated)
 
@@ -12,7 +12,7 @@ export function mangle(getHtml: () => TemplateResult, instance: any, mangler: (r
 
 class DOMIsh {
     template: TemplateResult
-    root: FakeElement
+    root: ManglerElement
 
     values: unknown[] = []
 
@@ -55,12 +55,12 @@ ${this.getRawHTML(v as any)}
     }
 
     // Note: The parsed result is wrapped in a body
-    parseFromTemplate(template: TemplateResult): [HTMLElement, FakeElement] {
+    parseFromTemplate(template: TemplateResult): [HTMLElement, ManglerElement] {
         const rawHTML = this.getRawHTML(template)
         const dom = new JSDOM(rawHTML)
 
         const node = dom.window.document.body
-        return [node, new FakeElement(node, this)]
+        return [node, new ManglerElement(node, this)]
     }
 
     getRawHTML(template: TemplateResult): string {
@@ -91,13 +91,13 @@ type StringResult = string | false | undefined | null | number | (() => string |
 type NodeResult = string | false | undefined | null | number | TemplateResult
     | (() => string | false | undefined | null | number | TemplateResult)
 
-class FakeNode {
+class ManglerNode {
     get parentNode() {
-        return this.#node.parentNode && new FakeNode(this.#node.parentNode, this.domish)
+        return this.#node.parentNode && new ManglerNode(this.#node.parentNode, this.domish)
     }
 
     get parentElement() {
-        return this.#node.parentElement && new FakeElement(this.#node.parentElement, this.domish)
+        return this.#node.parentElement && new ManglerElement(this.#node.parentElement, this.domish)
     }
 
     get textContent(): string | null {
@@ -110,7 +110,7 @@ class FakeNode {
     }
 
     get childNodes() {
-        return Array.from(this.#node.childNodes).map(n => new FakeNode(n, this.domish))
+        return Array.from(this.#node.childNodes).map(n => new ManglerNode(n, this.domish))
     }
 
     #node: Node
@@ -152,7 +152,7 @@ class FakeNode {
     }
 }
 
-class FakeElement extends FakeNode {
+class ManglerElement extends ManglerNode {
     get classList() {
         return {
             // Note: We only add classes as TemplateLiterals
@@ -186,7 +186,7 @@ class FakeElement extends FakeNode {
     }
 
     get children() {
-        return Array.from(this.#element.children).map(c => new FakeElement(c, this.domish))
+        return Array.from(this.#element.children).map(c => new ManglerElement(c, this.domish))
     }
 
     #element: Element
@@ -197,13 +197,13 @@ class FakeElement extends FakeNode {
         this.#element = element
     }
 
-    querySelector(selector: string): FakeElement | null {
+    querySelector(selector: string): ManglerElement | null {
         const result = this.#element.querySelector(selector)
-        return result && new FakeElement(result, this.domish)
+        return result && new ManglerElement(result, this.domish)
     }
 
-    querySelectorAll(selector: string): FakeElement[] {
-        return Array.from(this.#element.querySelectorAll(selector)).map(e => new FakeElement(e, this.domish))
+    querySelectorAll(selector: string): ManglerElement[] {
+        return Array.from(this.#element.querySelectorAll(selector)).map(e => new ManglerElement(e, this.domish))
     }
 
     setAttribute(name: string, value: StringResult) {
