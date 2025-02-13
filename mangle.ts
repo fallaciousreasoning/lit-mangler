@@ -1,5 +1,6 @@
 import { TemplateResult } from "lit-html";
 import { JSDOM } from 'jsdom'
+import { parseTemplate, templateTag } from "./mangleTag";
 
 export function mangle(getHtml: () => TemplateResult, instance: any, mangler: (root: FakeElement) => void) {
     const templated = getHtml.call(instance)
@@ -9,15 +10,11 @@ export function mangle(getHtml: () => TemplateResult, instance: any, mangler: (r
     return domish.toTemplateResult()
 }
 
-const getPlaceholder = (n: number) => `$$lit_mangler_${n}$$`
-const placeholderRegex = /\$\$lit_mangler_(\d+)\$\$/gm
-// const parser = new DOMParser()
-
 class DOMIsh {
     template: TemplateResult
     root: FakeElement
 
-    values: unknown[]
+    values: unknown[] = []
 
     #internalRoot: Element
 
@@ -28,52 +25,60 @@ class DOMIsh {
             this.values.push(value)
         }
 
-        return getPlaceholder(index)
-    }
+        if (typeof value !== 'object' && typeof value !== 'function' && value !== undefined && value !== null) {
+            return `#$$lit_mangler_${index}$$${value}/$$lit_mangler_${index}$$`
+        }
 
-    getPlaceholderValue(name: string) {
-        const index = placeholderRegex.exec(name)?.[1]
-        return index ? this.values[parseInt(index)] : null
+        if (typeof value === 'object' && value !== null && templateTag in value) {
+            return `#$$lit_mangler_${index}$$
+${this.getRawHTML(value as any)}
+/$$lit_mangler_${index}$$`
+        }
+
+        if (Array.isArray(value)) {
+            return value.map((v, i) => `#$$lit_mangler_${index}_${i}$$
+${this.getRawHTML(v as any)}
+/$$lit_mangler_${index}_${i}$$`).join('')
+        }
+
+        // We use this for placeholding values which can't be represented nicely
+        // in HTML, like functions, undefined, null ect.
+        return `$$lit_mangler_${index}$$`
     }
 
     constructor(template: TemplateResult) {
         this.template = template
-        this.values = template.values
 
-        const rawHTML = this.template.strings.reduce((prev, next, currentIndex) => prev + next + (currentIndex < this.template.values.length ? getPlaceholder(currentIndex) : ''), "")
+        const [internal, element] = this.parseFromTemplate(template)
+        this.#internalRoot = internal
+        this.root = element
+    }
+
+    // Note: The parsed result is wrapped in a body
+    parseFromTemplate(template: TemplateResult): [HTMLElement, FakeElement] {
+        const rawHTML = this.getRawHTML(template)
         const dom = new JSDOM(rawHTML)
-        this.#internalRoot = dom.window.document.body
-        this.root = new FakeElement(this.#internalRoot, this)
+
+        const node = dom.window.document.body
+        return [node, new FakeElement(node, this)]
+    }
+
+    getRawHTML(template: TemplateResult): string {
+        return template.strings.reduce((prev, next, currentIndex) => {
+            const value = currentIndex < template.values.length
+                ? this.getPlaceholderForValue(template.values[currentIndex])
+                : ''
+            return prev + next + value
+        }, '')
+    }
+
+    #toTemplateResult(rawHTML: string): TemplateResult {
+        return parseTemplate(rawHTML, this.values)
     }
 
     toTemplateResult(): TemplateResult {
         const rawHTML = this.#internalRoot.innerHTML
-
-        const strings: string[] = []
-        const values: unknown[] = []
-        let lastIndex = 0
-
-        for (const match of rawHTML.matchAll(placeholderRegex)) {
-            // Push the raw string
-            strings.push(rawHTML.substring(lastIndex, match.index))
-
-            // Push the interpolated value
-            values.push(this.values[parseInt(match[1])])
-
-            lastIndex = match.index + match[0].length
-        }
-
-        // Push the last string
-        strings.push(rawHTML.substring(lastIndex, rawHTML.length))
-
-        return {
-            _$litType$: this.template._$litType$,
-            values,
-            strings: {
-                ...strings,
-                raw: strings
-            }
-        }
+        return this.#toTemplateResult(rawHTML)
     }
 
     toString() {
@@ -150,22 +155,32 @@ class FakeNode {
 class FakeElement extends FakeNode {
     get classList() {
         return {
+            // Note: We only add classes as TemplateLiterals
             add: (...tokens: StringResult[]) => {
-                this.#element.classList.add(...tokens.flatMap(t => [t, this.domish.getPlaceholderForValue(t)]).filter(t => typeof t === 'string'))
+                this.#element.classList.add(...tokens.map(t => this.domish.getPlaceholderForValue(t)))
             },
 
+            // Note: We want to be able to remove literals from the classList or template values
             remove: (...tokens: StringResult[]) => {
                 this.#element.classList.remove(...tokens.flatMap(t => [t, this.domish.getPlaceholderForValue(t)]).filter(t => typeof t === 'string'))
             },
 
+            // If the classList contains the literal token, we'll toggle that. Otherwise,
+            // toggle the template values.
             toggle: (token: StringResult) => {
-                const value = typeof token === 'string' ? token : this.domish.getPlaceholderForValue(token)
+                if (typeof token === 'string' && this.#element.classList.contains(token)) {
+                    this.#element.classList.toggle(token)
+                    return
+                }
+                const value = this.domish.getPlaceholderForValue(token)
                 this.#element.classList.toggle(value)
             },
 
+            // Determine if the classList contains the literal token or the template value
             contains: (token: StringResult) => {
                 const value = typeof token === 'string' ? token : this.domish.getPlaceholderForValue(token)
-                return this.#element.classList.contains(value)
+                return typeof token === 'string' && this.#element.classList.contains(value)
+                    || this.#element.classList.contains(this.domish.getPlaceholderForValue(token))
             }
         }
     }
@@ -188,8 +203,6 @@ class FakeElement extends FakeNode {
     }
 
     querySelectorAll(selector: string): FakeElement[] {
-        console.log(this.#element.outerHTML)
-        console.log(this.#element.querySelectorAll(selector))
         return Array.from(this.#element.querySelectorAll(selector)).map(e => new FakeElement(e, this.domish))
     }
 

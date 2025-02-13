@@ -9,7 +9,7 @@ export function getHtml(this: FakeElement & { name: string }) {
 
 // This one is particularly brutal 'cause we don't have a component boundary to mangle
 export function getList(this: string[]) {
-    return html`<div>
+    return html`<div ?hidden=${this.length === 0} .count=${this.length} @click=${console.log}>
         Hi All!
         
         <div class="greetings">

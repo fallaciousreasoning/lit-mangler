@@ -50,9 +50,10 @@ const mangledList = mangle(getList, ['jay', 'brian', 'ola', 'pete'], t => {
     const root = t.querySelector('div')
     root?.childNodes[0].replace(html`Greetings from The Mangler!!`)
 
-    const jay = t.querySelectorAll('span')
-    console.log(jay)
-    // jay?.classList.add('best')
+    const spans = t.querySelectorAll('span')
+    console.log(spans.map(s => s.textContent).join('\n'))
+    const jay = spans.find(t => t.textContent?.includes('jay'))
+    jay?.classList.add('best')
 })
 
 console.log(render(mangledList))
