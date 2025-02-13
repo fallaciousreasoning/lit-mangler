@@ -80,11 +80,6 @@ ${this.getRawHTML(v as any)}
         const rawHTML = this.#internalRoot.innerHTML
         return this.#toTemplateResult(rawHTML)
     }
-
-    toString() {
-        // TODO: I think we should output toStringed output here
-        return this.#internalRoot.innerHTML
-    }
 }
 
 type StringResult = string | false | undefined | null | number | (() => string | false | undefined | null | number)
