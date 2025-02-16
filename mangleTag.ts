@@ -132,13 +132,11 @@ export const parseTemplate = (rawHTML: string, availableValues: unknown[], start
         parsedTo = tag.end
     }
 
-    strings.push(rawHTML.substring(parsedTo, end))
-
+    strings.push(rawHTML.substring(parsedTo, end));
+    (strings as any)['raw'] = [...strings]
+    
     return {
-        strings: {
-            ...strings,
-            raw: strings
-        },
+        strings: strings as any,
         values,
         _$litType$: 1
     }

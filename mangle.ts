@@ -26,7 +26,7 @@ class DOMIsh {
         }
 
         if (typeof value !== 'object' && typeof value !== 'function' && value !== undefined && value !== null) {
-            return `#$$lit_mangler_${index}$$${value}/$$lit_mangler_${index}$$`
+            return `#$$lit_mangler_${index}$$${value.toString().replaceAll('"', '&quot;')}/$$lit_mangler_${index}$$`
         }
 
         if (typeof value === 'object' && value !== null && templateTag in value) {
@@ -119,32 +119,6 @@ class ManglerNode {
     remove() {
         this.#node.parentNode?.removeChild(this.#node)
     }
-
-    replace(node: NodeResult) {
-        const replacement = this.domish.getPlaceholderForValue(node)
-        const textNode = this.#node.ownerDocument!.createTextNode(replacement)
-
-        this.#node.parentNode?.replaceChild(textNode, this.#node)
-    }
-
-    insertBefore(node: NodeResult) {
-        const replacement = this.domish.getPlaceholderForValue(node)
-        const textNode = this.#node.ownerDocument!.createTextNode(replacement)
-
-        this.#node.parentNode?.insertBefore(textNode, this.#node)
-    }
-
-    insertAfter(node: NodeResult) {
-        const replacement = this.domish.getPlaceholderForValue(node)
-        const textNode = this.#node.ownerDocument!.createTextNode(replacement)
-
-        const nextSibling = this.#node.nextSibling
-        if (nextSibling) {
-            this.#node.parentNode?.insertBefore(textNode, nextSibling)
-        } else {
-            this.#node.parentNode?.append(textNode)
-        }
-    }
 }
 
 class ManglerElement extends ManglerNode {
@@ -210,12 +184,28 @@ class ManglerElement extends ManglerNode {
         return this.#element.getAttribute(name)
     }
 
-    remove() {
-        this.#element.remove()
+    replace(node: NodeResult) {
+        this.insertBefore(node)
+        this.remove()
+    }
+
+    insertBefore(node: NodeResult): void {
+        const content = this.domish.getPlaceholderForValue(node)
+        this.#element.insertAdjacentHTML('beforebegin', content)
+    }
+
+    insertAfter(node: NodeResult) {
+        const content = this.domish.getPlaceholderForValue(node)
+        this.#element.insertAdjacentHTML('afterend', content)
     }
 
     appendChild(child: NodeResult) {
         const placeholder = this.domish.getPlaceholderForValue(child)
         this.#element.innerHTML += placeholder
+    }
+
+    prependChild(child: NodeResult) {
+        const placeholder = this.domish.getPlaceholderForValue(child)
+        this.#element.innerHTML = placeholder + this.#element.innerHTML
     }
 }

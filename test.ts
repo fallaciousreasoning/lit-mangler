@@ -48,12 +48,18 @@ const mangledList = mangle(getList, ['jay', 'brian', 'ola', 'pete'], t => {
     // Change the title of who's being greeted
     // first child is a div
     const root = t.querySelector('div')
-    root?.childNodes[0].replace(html`Greetings from The Mangler!!`)
+
+    // Remove the title
+    root?.childNodes[0].remove()
+    // Add our way better greeting
+    root?.prependChild(html`<div>Greetings from The Mangler!!</div>`)
 
     const spans = t.querySelectorAll('span')
     console.log(spans.map(s => s.textContent).join('\n'))
     const jay = spans.find(t => t.textContent?.includes('jay'))
     jay?.classList.add('best')
+
+    console.log(t)
 })
 
 console.log(render(mangledList))
